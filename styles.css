@@ -97,6 +97,29 @@ main {
     display: none;
 }
 
+/* Specjalne style dla iOS Safari */
+@supports (-webkit-touch-callout: none) {
+    /* iOS Safari */
+    #file-input {
+        /* Pozwalamy na istnienie elementu, ale czynimy go niewidocznym */
+        position: absolute;
+        opacity: 0;
+        width: 1px;
+        height: 1px;
+        z-index: -1;
+        /* Upewniamy się, że element jest klikalny i ma odpowiedni rozmiar */
+        pointer-events: auto;
+    }
+    
+    .file-label {
+        /* Poprawiamy interaktywność etykiety */
+        cursor: pointer;
+        padding: 8px 16px;
+        border-radius: 20px;
+        background-color: rgba(74, 107, 255, 0.1);
+    }
+}
+
 .file-label {
     color: var(--primary-color);
     text-decoration: underline;

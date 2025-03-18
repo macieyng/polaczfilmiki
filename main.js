@@ -54,14 +54,46 @@ document.addEventListener('DOMContentLoaded', () => {
                     video._triedAlternative = true;
                     console.log('Próba alternatywnej metody wykrywania orientacji na iOS');
                     
-                    // Tworzymy obiekt URL bezpośrednio
+                    // Wg Stack Overflow, dla iOS bezpośredni odczyt jako dataURL może działać lepiej
                     try {
-                        const blobUrl = URL.createObjectURL(file);
-                        console.log('Utworzono blob URL bezpośrednio dla orientacji:', blobUrl);
-                        video.src = blobUrl;
-                        return; // Nie rozwiązujemy jeszcze Promise - czekamy na onloadedmetadata lub kolejny błąd
+                        // Utwórz nowy element video
+                        const newVideo = document.createElement('video');
+                        newVideo.preload = 'metadata';
+                        
+                        // Przygotuj obsługę zdarzeń dla nowego elementu
+                        newVideo.onloadedmetadata = () => {
+                            const orientation = newVideo.videoWidth > newVideo.videoHeight ? 'landscape' : 'portrait';
+                            console.log(`Wykryto orientację dla ${file.name} (alt): ${orientation}, wymiary: ${newVideo.videoWidth}x${newVideo.videoHeight}`);
+                            resolve({ file, orientation, width: newVideo.videoWidth, height: newVideo.videoHeight });
+                        };
+                        
+                        newVideo.onerror = () => {
+                            console.log('Alternatywna metoda wykrywania orientacji nie powiodła się');
+                            // Zgadnij orientację na podstawie nazwy pliku
+                            const fileName = file.name.toLowerCase();
+                            let guessedOrientation = 'landscape';
+                            
+                            if (fileName.includes('portrait') || fileName.includes('pionowy') || fileName.includes('vertical')) {
+                                console.log('Na podstawie nazwy pliku wnioskuję, że film jest pionowy:', fileName);
+                                guessedOrientation = 'portrait';
+                            }
+                            
+                            resolve({ file, orientation: guessedOrientation, width: 0, height: 0 });
+                        };
+                        
+                        // Bezpośrednie użycie FileReader dla iOS
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            newVideo.src = e.target.result;
+                        };
+                        reader.onerror = function() {
+                            resolve({ file, orientation: 'landscape', width: 0, height: 0 });
+                        };
+                        reader.readAsDataURL(file);
+                        
+                        return;
                     } catch (altError) {
-                        console.error('Alternatywna metoda również nie działa:', altError);
+                        console.error('Alternatywna metoda wykrywania orientacji nie działa:', altError);
                     }
                 }
                 
@@ -92,33 +124,18 @@ document.addEventListener('DOMContentLoaded', () => {
             
             video.onerror = handleError;
             
-            // Dla iOS używamy FileReader, podobnie jak w createVideoElement
+            // Dla iOS używamy prostszej metody
             if (isIOS) {
-                console.log('Wykryto iOS, używam specjalnej metody wykrywania orientacji dla', file.name);
-                const reader = new FileReader();
+                console.log('Wykryto iOS, używam uproszczonej metody wykrywania orientacji dla', file.name);
                 
+                // Bezpośrednie użycie FileReader zgodnie z SO
+                const reader = new FileReader();
                 reader.onload = function(e) {
-                    console.log('FileReader wczytał plik dla orientacji, rozmiar:', e.target.result.length);
-                    // Safari na iOS może mieć problemy z Object URL, więc używamy dataURL
                     try {
-                        fetch(e.target.result)
-                            .then(response => {
-                                console.log('Fetch orientacji odpowiedział:', response.status);
-                                return response.blob();
-                            })
-                            .then(blob => {
-                                console.log('Utworzono Blob dla orientacji, rozmiar:', blob.size);
-                                const blobUrl = URL.createObjectURL(blob);
-                                console.log('URL dla orientacji:', blobUrl);
-                                video.src = blobUrl;
-                            })
-                            .catch(error => {
-                                console.error('Błąd podczas konwersji do Blob dla orientacji:', error);
-                                video.src = e.target.result;
-                            });
-                    } catch (error) {
-                        console.error('Błąd przy fetch dla orientacji:', error);
                         video.src = e.target.result;
+                    } catch (error) {
+                        console.error('Błąd przy ustawianiu dataURL dla orientacji:', error);
+                        handleError(error);
                     }
                 };
                 
@@ -127,7 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     handleError(new Error('Błąd odczytu pliku za pomocą FileReader (orientacja)'));
                 };
                 
-                // Początek odczytu pliku
                 try {
                     reader.readAsDataURL(file);
                 } catch (error) {
@@ -258,22 +274,67 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const handleError = (e) => {
                 console.error('Błąd podczas ładowania wideo:', file.name, e);
+                
                 // Próbujemy alternatywnej metody dla iOS, gdy wystąpi błąd
                 if (isIOS && !video._triedAlternative) {
                     video._triedAlternative = true;
                     console.log('Próba alternatywnej metody załadowania pliku na iOS');
                     
-                    // Tworzymy obiekt URL bezpośrednio
+                    // Wg Stack Overflow - bezpośrednie przypisanie pliku do src może działać lepiej na niektórych wersjach iOS
                     try {
-                        URL.revokeObjectURL(video.src); // Zwalniamy poprzedni URL
-                        const blobUrl = URL.createObjectURL(file);
-                        console.log('Utworzono blob URL bezpośrednio:', blobUrl);
-                        video.src = blobUrl;
-                        video.load();
-                        return; // Nie rozwiązujemy jeszcze Promise - czekamy na onloadeddata lub kolejny błąd
+                        // Utwórz nowy element video
+                        const newVideo = document.createElement('video');
+                        newVideo.preload = 'auto';
+                        newVideo.muted = false;
+                        newVideo.playsInline = true;
+                        
+                        // Przygotuj obsługę zdarzeń dla nowego elementu
+                        newVideo.onloadeddata = () => {
+                            console.log('Nowy element wideo załadowany pomyślnie:', file.name);
+                            resolve(newVideo);
+                        };
+                        
+                        newVideo.onerror = (altError) => {
+                            console.error('Alternatywna metoda również nie działa:', altError);
+                            // Ostatnia próba - użyj obiektu URL
+                            try {
+                                URL.revokeObjectURL(video.src);
+                                const blobUrl = URL.createObjectURL(file);
+                                console.log('Utworzono blob URL bezpośrednio:', blobUrl);
+                                
+                                // Jeszcze jeden nowy element
+                                const finalVideo = document.createElement('video');
+                                finalVideo.preload = 'auto';
+                                finalVideo.muted = false;
+                                finalVideo.playsInline = true;
+                                finalVideo.onloadeddata = () => resolve(finalVideo);
+                                finalVideo.onerror = () => resolve(null);
+                                
+                                finalVideo.src = blobUrl;
+                                finalVideo.load();
+                            } catch (error) {
+                                console.log('Wszystkie metody załadowania wideo nie powiodły się');
+                                resolve(null);
+                            }
+                        };
+                        
+                        // Metoda ze Stack Overflow - użyj FileReader do konwersji na base64 dla iOS
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            newVideo.src = e.target.result;
+                            newVideo.load();
+                        };
+                        reader.onerror = function() {
+                            resolve(null);
+                        };
+                        reader.readAsDataURL(file);
+                        
                     } catch (altError) {
                         console.error('Alternatywna metoda również nie działa:', altError);
+                        resolve(null);
                     }
+                    
+                    return; // Nie rozwiązujemy jeszcze Promise - czekamy na onloadeddata dla nowego elementu
                 }
                 
                 console.log('Wszystkie metody załadowania wideo nie powiodły się');
@@ -291,41 +352,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isIOS) {
                 console.log('Wykryto iOS, używam specjalnej metody ładowania wideo dla', file.name);
                 
-                // Tworzymy FileReader do wczytania pliku jako URL danych
+                // Według Stack Overflow lepiej używać bezpośrednio dataURL dla iOS
                 const reader = new FileReader();
                 
                 reader.onload = function(e) {
                     console.log('FileReader wczytał plik, rozmiar danych:', e.target.result.length);
                     
-                    // Ustal typ MIME na podstawie pliku
-                    const mimeType = file.type || determineVideoType(file.name);
-                    console.log('Ustalony typ MIME:', mimeType);
-                    
-                    // Dla iOS, próbujemy utworzyć Blob z danych
+                    // Używamy bezpośrednio dataURL zamiast konwersji na Blob
                     try {
-                        fetch(e.target.result)
-                            .then(response => {
-                                console.log('Fetch odpowiedział:', response.status);
-                                return response.blob();
-                            })
-                            .then(blob => {
-                                console.log('Utworzono Blob z fetch, rozmiar:', blob.size);
-                                const blobUrl = URL.createObjectURL(blob);
-                                console.log('Utworzono blob URL:', blobUrl);
-                                video.src = blobUrl;
-                                video.load();
-                            })
-                            .catch(error => {
-                                console.error('Błąd podczas konwersji do Blob:', error);
-                                // Próba użycia bezpośrednio wyniku FileReader
-                                console.log('Próba użycia bezpośrednio dataURL');
-                                video.src = e.target.result;
-                                video.load();
-                            });
-                    } catch (error) {
-                        console.error('Błąd przy tworzeniu Blob:', error);
                         video.src = e.target.result;
                         video.load();
+                    } catch (error) {
+                        console.error('Błąd przy ustawianiu dataURL:', error);
+                        handleError(error);
                     }
                 };
                 
@@ -879,7 +918,70 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Obsługa kliknięcia na obszar uploadu
     elements.uploadArea.addEventListener('click', () => {
-        elements.fileInput.click();
+        // Na iOS lepiej użyć bezpośredniego wywołania click na elemencie input
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        
+        if (isIOS) {
+            // Na iOS, symulacja kliknięcia może nie działać poprawnie, próbujemy bardziej bezpośredniej metody
+            console.log('Wywołuję click dla iOS');
+            
+            // Tworzymy tymczasowy element, który pozwoli na lepszą interakcję z iOS
+            const tempInput = document.createElement('input');
+            tempInput.setAttribute('type', 'file');
+            tempInput.setAttribute('accept', '.mp4,.mov,.m4v,.3gp,video/*');
+            tempInput.setAttribute('multiple', 'multiple');
+            
+            // Nasłuchujemy na zmianę i propagujemy ją do właściwego input
+            tempInput.addEventListener('change', function(e) {
+                console.log('Wybrano pliki przez tymczasowy input:', e.target.files?.length);
+                
+                if (e.target.files && e.target.files.length > 0) {
+                    // Kopiujemy wybrane pliki do właściwego handlera
+                    handleFileSelection(e.target.files);
+                }
+            });
+            
+            // Wywołujemy kliknięcie po małym opóźnieniu, aby dać czas na rendering
+            setTimeout(() => {
+                tempInput.click();
+            }, 50);
+        } else {
+            // Standardowe zachowanie dla innych przeglądarek
+            elements.fileInput.click();
+        }
+    });
+    
+    // Specjalna obsługa dla etykiety "wybierz pliki"
+    document.querySelector('.file-label').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        
+        if (isIOS) {
+            console.log('Kliknięto etykietę na iOS');
+            
+            // Podobny kod jak wyżej, ale specjalnie dla kliknięcia w etykietę
+            const tempInput = document.createElement('input');
+            tempInput.setAttribute('type', 'file');
+            tempInput.setAttribute('accept', '.mp4,.mov,.m4v,.3gp,video/*');
+            tempInput.setAttribute('multiple', 'multiple');
+            
+            tempInput.addEventListener('change', function(e) {
+                console.log('Wybrano pliki przez tymczasowy input (etykieta):', e.target.files?.length);
+                
+                if (e.target.files && e.target.files.length > 0) {
+                    handleFileSelection(e.target.files);
+                }
+            });
+            
+            // Wywołujemy kliknięcie
+            setTimeout(() => {
+                tempInput.click();
+            }, 50);
+        } else {
+            elements.fileInput.click();
+        }
     });
     
     // Obsługa wyboru plików za pomocą input type="file"
