@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Połącz filmiki</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Połącz filmiki</h1>
+            <p class="subtitle">Łącz swoje filmy lokalnie, bez wysyłania na serwer</p>
+        </header>
+
+        <main>
+            <section class="step-section" id="step-upload">
+                <h2>Krok 1: Wybierz filmy do połączenia</h2>
+                <div class="upload-container" id="upload-area">
+                    <div class="upload-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 16V8M12 8L8 12M12 8L16 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 15V16C3 18.2091 4.79086 20 7 20H17C19.2091 20 21 18.2091 21 16V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <p>Przeciągnij i upuść pliki lub <label for="file-input" class="file-label">wybierz pliki</label></p>
+                    <input type="file" id="file-input" accept="video/*" multiple>
+                    <p class="file-info">Możesz wybrać dwa lub więcej filmów</p>
+                </div>
+                <div class="selected-files-container" id="selected-files">
+                    <!-- Lista wybranych plików pojawi się tutaj -->
+                </div>
+                <button class="button next-button" id="upload-next" disabled>Dalej</button>
+            </section>
+
+            <section class="step-section hidden" id="step-orientation">
+                <h2>Krok 2: Wybierz ustawienia wyjściowe</h2>
+                <h3>Orientacja wideo</h3>
+                <div class="orientation-options">
+                    <div class="orientation-option" id="option-landscape">
+                        <div class="orientation-icon landscape">
+                            <div class="orientation-preview"></div>
+                        </div>
+                        <p>Pozioma (landscape)</p>
+                    </div>
+                    <div class="orientation-option" id="option-portrait">
+                        <div class="orientation-icon portrait">
+                            <div class="orientation-preview"></div>
+                        </div>
+                        <p>Pionowa (portrait)</p>
+                    </div>
+                </div>
+                
+                <h3>Format wyjściowy</h3>
+                <div class="format-options">
+                    <div class="format-option selected" id="format-auto">
+                        <p>Automatyczny (zalecane)</p>
+                        <span class="format-description">Format zostanie wybrany automatycznie na podstawie filmów</span>
+                    </div>
+                    <div class="format-option" id="format-mp4">
+                        <p>MP4</p>
+                        <span class="format-description">Najlepsza kompatybilność, obsługiwany przez większość urządzeń</span>
+                    </div>
+                    <div class="format-option" id="format-webm">
+                        <p>WebM</p>
+                        <span class="format-description">Lepszy stosunek jakości do rozmiaru, może nie być obsługiwany na starszych urządzeniach</span>
+                    </div>
+                </div>
+                
+                <button class="button back-button" id="orientation-back">Wstecz</button>
+                <button class="button next-button" id="orientation-next">Dalej</button>
+            </section>
+
+            <section class="step-section hidden" id="step-processing">
+                <h2>Krok 3: Przetwarzanie filmów</h2>
+                <div class="processing-container">
+                    <p id="processing-status">Przygotowanie do przetwarzania...</p>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <p class="processing-info">To może potrwać kilka minut, w zależności od rozmiaru i liczby filmów</p>
+                </div>
+                <button class="button cancel-button" id="processing-cancel">Anuluj</button>
+            </section>
+
+            <section class="step-section hidden" id="step-download">
+                <h2>Krok 4: Pobierz połączony film</h2>
+                <div class="result-container">
+                    <div class="video-preview-container">
+                        <video id="result-preview" controls></video>
+                    </div>
+                    <p>Twoje filmy zostały pomyślnie połączone! Możesz teraz pobrać wynikowy plik.</p>
+                    <button class="button download-button" id="download-button">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 16L12 8M12 16L8 12M12 16L16 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 15V16C3 18.2091 4.79086 20 7 20H17C19.2091 20 21 18.2091 21 16V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Pobierz film
+                    </button>
+                </div>
+                <button class="button restart-button" id="restart-button">Połącz nowe filmy</button>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Połącz filmiki - Wszystkie operacje wykonywane są lokalnie na Twoim urządzeniu</p>
+        </footer>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html> 
