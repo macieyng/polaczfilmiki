@@ -40,20 +40,56 @@ document.addEventListener('DOMContentLoaded', () => {
             const video = document.createElement('video');
             video.preload = 'metadata';
             
+            // Wykryj iOS Safari
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            
             video.onloadedmetadata = () => {
-                URL.revokeObjectURL(video.src);
+                if (video.src && video.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(video.src);
+                }
                 // Jeśli szerokość > wysokość, to landscape, w przeciwnym razie portrait
                 const orientation = video.videoWidth > video.videoHeight ? 'landscape' : 'portrait';
+                console.log(`Wykryto orientację dla ${file.name}: ${orientation}, wymiary: ${video.videoWidth}x${video.videoHeight}`);
                 resolve({ file, orientation, width: video.videoWidth, height: video.videoHeight });
             };
             
-            video.onerror = () => {
-                URL.revokeObjectURL(video.src);
+            video.onerror = (e) => {
+                console.error('Błąd podczas wykrywania orientacji wideo:', file.name, e);
+                if (video.src && video.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(video.src);
+                }
                 // W przypadku błędu, zakładamy orientację landscape jako domyślną
                 resolve({ file, orientation: 'landscape', width: 0, height: 0 });
             };
             
-            video.src = URL.createObjectURL(file);
+            // Dla iOS używamy FileReader, podobnie jak w createVideoElement
+            if (isIOS) {
+                console.log('Wykryto iOS, używam specjalnej metody wykrywania orientacji');
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    // Safari na iOS może mieć problemy z Object URL, więc używamy dataURL
+                    fetch(e.target.result)
+                        .then(response => response.blob())
+                        .then(blob => {
+                            video.src = URL.createObjectURL(blob);
+                        })
+                        .catch(error => {
+                            console.error('Błąd podczas konwersji do Blob dla orientacji:', error);
+                            video.src = e.target.result;
+                        });
+                };
+                
+                reader.onerror = function() {
+                    console.error('Błąd FileReader podczas wykrywania orientacji');
+                    resolve({ file, orientation: 'landscape', width: 0, height: 0 });
+                };
+                
+                reader.readAsDataURL(file);
+            } else {
+                // Standardowa metoda dla innych przeglądarek
+                video.src = URL.createObjectURL(file);
+            }
         });
     }
 
@@ -125,6 +161,9 @@ document.addEventListener('DOMContentLoaded', () => {
             video.muted = false; // Chcemy uzyskać dźwięk z wideo
             video.playsInline = true;
             
+            // Szczególna obsługa dla iOS Safari
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            
             video.onloadeddata = () => {
                 resolve(video);
             };
@@ -134,8 +173,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 resolve(null);
             };
             
-            video.src = URL.createObjectURL(file);
-            video.load();
+            // Dla iOS stosujemy inną metodę ładowania wideo
+            if (isIOS) {
+                console.log('Wykryto iOS, używam specjalnej metody ładowania wideo');
+                
+                // Tworzymy FileReader do wczytania pliku jako URL danych
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    // Ustal typ MIME na podstawie pliku
+                    const mimeType = file.type || 'video/mp4';
+                    
+                    // Dla iOS, zamiast Object URL używamy blob URL z FileReader
+                    fetch(e.target.result)
+                        .then(response => response.blob())
+                        .then(blob => {
+                            video.src = URL.createObjectURL(blob);
+                            video.load();
+                        })
+                        .catch(error => {
+                            console.error('Błąd podczas konwersji do Blob:', error);
+                            // Próba użycia bezpośrednio wyniku FileReader
+                            video.src = e.target.result;
+                            video.load();
+                        });
+                };
+                
+                reader.onerror = function() {
+                    console.error('Błąd FileReader podczas czytania pliku wideo');
+                    resolve(null);
+                };
+                
+                // Rozpocznij odczyt pliku jako URL danych
+                reader.readAsDataURL(file);
+            } else {
+                // Standardowa metoda dla innych przeglądarek
+                video.src = URL.createObjectURL(file);
+                video.load();
+            }
         });
     }
 
