@@ -102,6 +102,31 @@
             </section>
         </main>
 
+        <!-- Komunikaty błędów -->
+        <div id="message-box" class="message-box hidden">
+            <div class="message-content">
+                <h3>Komunikat</h3>
+                <p id="message-text"></p>
+                <button id="message-close" class="button">Zamknij</button>
+            </div>
+        </div>
+
+        <!-- Panel logów -->
+        <div class="logs-panel">
+            <div class="logs-header" id="logs-toggle">
+                <span>Logi przetwarzania</span>
+                <svg class="logs-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div class="logs-content hidden" id="logs-content">
+                <div id="logs-container">
+                    <!-- Logi pojawią się tutaj -->
+                </div>
+                <button id="clear-logs" class="button">Wyczyść logi</button>
+            </div>
+        </div>
+
         <footer>
             <p>&copy; 2024 Połącz filmiki - Wszystkie operacje wykonywane są lokalnie na Twoim urządzeniu</p>
         </footer>

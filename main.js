@@ -9,6 +9,161 @@ document.addEventListener('DOMContentLoaded', () => {
         preferredFormat: 'auto' // Preferowany format wyjściowy (auto, mp4, webm)
     };
 
+    // System logowania
+    const logger = {
+        container: document.getElementById('logs-container'),
+        toggle: document.getElementById('logs-toggle'),
+        content: document.getElementById('logs-content'),
+        clearBtn: document.getElementById('clear-logs'),
+        
+        // Typy logów
+        INFO: 'info',
+        WARNING: 'warning',
+        ERROR: 'error',
+        
+        // Inicjalizacja systemu logowania
+        init() {
+            // Obsługa przycisku rozwijania/zwijania logów
+            this.toggle.addEventListener('click', () => {
+                this.content.classList.toggle('hidden');
+                this.toggle.classList.toggle('expanded');
+                
+                // Usuwamy wskaźnik nowych logów po rozwinięciu
+                if (!this.content.classList.contains('hidden')) {
+                    this.toggle.classList.remove('new-logs');
+                }
+            });
+            
+            // Obsługa przycisku czyszczenia logów
+            this.clearBtn.addEventListener('click', () => {
+                this.clear();
+            });
+        },
+        
+        // Metoda do logowania komunikatu
+        log(message, type = this.INFO) {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            
+            // Dodajemy znacznik czasu
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            
+            // Dodajemy wpis na początku kontenera
+            this.container.insertBefore(entry, this.container.firstChild);
+            
+            // Logujemy także do konsoli
+            switch(type) {
+                case this.WARNING:
+                    console.warn(message);
+                    break;
+                case this.ERROR:
+                    console.error(message);
+                    break;
+                default:
+                    console.log(message);
+            }
+            
+            // Jeśli logi są ukryte, pokazujemy wskaźnik nowego logu
+            if (this.content.classList.contains('hidden')) {
+                this.toggle.classList.add('new-logs');
+                
+                // Automatycznie pokaż logi dla błędów
+                if (type === this.ERROR) {
+                    this.content.classList.remove('hidden');
+                    this.toggle.classList.add('expanded');
+                    this.toggle.classList.remove('new-logs');
+                }
+            }
+        },
+        
+        // Metoda do czyszczenia logów
+        clear() {
+            this.container.innerHTML = '';
+            this.log('Logi zostały wyczyszczone');
+        }
+    };
+    
+    // System wyświetlania komunikatów
+    const messageBox = {
+        element: document.getElementById('message-box'),
+        text: document.getElementById('message-text'),
+        closeBtn: document.getElementById('message-close'),
+        callback: null, // Funkcja callback dla przycisków
+        
+        // Inicjalizacja systemu komunikatów
+        init() {
+            this.closeBtn.addEventListener('click', () => {
+                this.hide();
+                // Wywołujemy callback jeśli istnieje, z parametrem false (anulowanie)
+                if (typeof this.callback === 'function') {
+                    this.callback(false);
+                    this.callback = null;
+                }
+            });
+            
+            // Zamykanie message boxa po kliknięciu w tło
+            this.element.addEventListener('click', (e) => {
+                if (e.target === this.element) {
+                    this.hide();
+                    // Wywołujemy callback jeśli istnieje, z parametrem false (anulowanie)
+                    if (typeof this.callback === 'function') {
+                        this.callback(false);
+                        this.callback = null;
+                    }
+                }
+            });
+        },
+        
+        // Wyświetlanie komunikatu
+        show(message, callback = null) {
+            this.text.innerHTML = message;
+            this.element.classList.remove('hidden');
+            this.callback = callback;
+            
+            // Logujemy komunikat
+            logger.log(`Wyświetlono komunikat: ${message}`, logger.WARNING);
+        },
+        
+        // Wyświetlanie komunikatu z potwierdzeniem
+        confirm(message, callback) {
+            // Tworzymy przyciski potwierdzenia
+            const confirmHtml = `
+                <p>${message}</p>
+                <div class="message-buttons">
+                    <button id="confirm-yes" class="button cancel-button">Tak</button>
+                    <button id="confirm-no" class="button">Nie</button>
+                </div>
+            `;
+            
+            this.text.innerHTML = confirmHtml;
+            this.element.classList.remove('hidden');
+            
+            // Dodajemy obsługę przycisków
+            document.getElementById('confirm-yes').addEventListener('click', () => {
+                this.hide();
+                if (typeof callback === 'function') {
+                    callback(true);
+                }
+            });
+            
+            document.getElementById('confirm-no').addEventListener('click', () => {
+                this.hide();
+                if (typeof callback === 'function') {
+                    callback(false);
+                }
+            });
+            
+            // Logujemy komunikat
+            logger.log(`Wyświetlono komunikat z potwierdzeniem: ${message}`, logger.WARNING);
+        },
+        
+        // Ukrywanie komunikatu
+        hide() {
+            this.element.classList.add('hidden');
+        }
+    };
+
     // Referencje do elementów DOM
     const elements = {
         fileInput: document.getElementById('file-input'),
@@ -147,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     reader.readAsDataURL(file);
                 } catch (error) {
-                    console.error('Błąd podczas inicjacji odczytu pliku dla orientacji:', error);
+                    console.error('Błąd podczas inicjacji odczytu pliku:', error);
                     handleError(error);
                 }
             } else {
@@ -202,11 +357,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Obsługa dodawania plików
     async function handleFileSelection(files) {
         if (!files || files.length === 0) {
-            console.error('Brak plików do przetworzenia');
+            logger.log('Brak plików do przetworzenia', logger.ERROR);
+            messageBox.show('Nie wybrano żadnych plików. Wybierz przynajmniej dwa pliki wideo.');
             return;
         }
         
-        console.log(`Rozpoczynam przetwarzanie ${files.length} plików`);
+        logger.log(`Rozpoczynam przetwarzanie ${files.length} plików`, logger.INFO);
         
         const fileInfoPromises = [];
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -214,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                console.log(`Przetwarzanie pliku ${i+1}: ${file.name}, typ: ${file.type}, rozmiar: ${file.size}`);
+                logger.log(`Przetwarzanie pliku ${i+1}: ${file.name}, typ: ${file.type}, rozmiar: ${file.size}`, logger.INFO);
                 
                 // Sprawdź czy to wideo lub popraw typ na iOS
                 const isVideo = file.type.startsWith('video/') || 
@@ -226,13 +382,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isVideo) {
                     fileInfoPromises.push(detectOrientation(file));
                 } else {
-                    console.warn(`Plik ${file.name} nie jest wideo lub ma nieznany typ: ${file.type}`);
+                    logger.log(`Plik ${file.name} nie jest wideo lub ma nieznany typ: ${file.type}`, logger.WARNING);
                 }
             }
             
             if (fileInfoPromises.length === 0) {
-                console.error('Brak plików wideo do przetworzenia');
-                alert('Nie wybrano żadnych plików wideo. Obsługiwane formaty to MP4, MOV, M4V i 3GP.');
+                logger.log('Brak plików wideo do przetworzenia', logger.ERROR);
+                messageBox.show('Nie wybrano żadnych plików wideo. Obsługiwane formaty to MP4, MOV, M4V i 3GP.');
                 return;
             }
             
@@ -241,17 +397,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const validFileInfos = fileInfos.filter(info => info && info.file);
             
             if (validFileInfos.length === 0) {
-                console.error('Brak poprawnych plików po przetworzeniu');
-                alert('Nie udało się przetworzyć wybranych plików wideo. Spróbuj ponownie lub wybierz inne pliki.');
+                logger.log('Brak poprawnych plików po przetworzeniu', logger.ERROR);
+                messageBox.show('Nie udało się przetworzyć wybranych plików wideo. Spróbuj ponownie lub wybierz inne pliki.');
                 return;
             }
             
             appState.selectedFiles = [...appState.selectedFiles, ...validFileInfos];
             updateSelectedFiles();
             checkNextButtonState();
+            
+            logger.log(`Dodano ${validFileInfos.length} plików. Łącznie wybrano ${appState.selectedFiles.length} plików.`, logger.INFO);
         } catch (error) {
-            console.error('Błąd podczas przetwarzania plików:', error);
-            alert('Wystąpił błąd podczas przetwarzania plików: ' + error.message);
+            logger.log('Błąd podczas przetwarzania plików: ' + error.message, logger.ERROR);
+            messageBox.show('Wystąpił błąd podczas przetwarzania plików: ' + error.message);
         }
     }
 
@@ -413,7 +571,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Na podstawie preferencji użytkownika
         if (appState.preferredFormat === 'mp4') {
             types = [
+                'video/mp4;codecs=h264,aac',
+                'video/mp4;codecs=h264',
                 'video/mp4',
+                'video/webm;codecs=h264,opus',
                 'video/webm;codecs=h264',
                 'video/webm;codecs=vp9,opus',
                 'video/webm;codecs=vp8,opus',
@@ -424,6 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 'video/webm;codecs=vp9,opus',
                 'video/webm;codecs=vp8,opus',
                 'video/webm',
+                'video/mp4;codecs=h264,aac',
                 'video/mp4'
             ];
         } else {
@@ -434,8 +596,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (hasMP4 && !hasWebM) {
                 // Jeśli mamy tylko MP4, preferujemy MP4
                 types = [
+                    'video/mp4;codecs=h264,aac',
                     'video/mp4',
-                    'video/webm;codecs=h264',
+                    'video/webm;codecs=h264,opus',
                     'video/webm;codecs=vp9,opus',
                     'video/webm;codecs=vp8,opus',
                     'video/webm'
@@ -446,6 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'video/webm;codecs=vp9,opus',
                     'video/webm;codecs=vp8,opus',
                     'video/webm',
+                    'video/mp4;codecs=h264,aac',
                     'video/mp4'
                 ];
             }
@@ -470,6 +634,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ratio < 0) ratio = 0;
         if (ratio > 1) ratio = 1;
         elements.progressBar.style.width = `${ratio * 100}%`;
+        
+        // Dodajemy log o postępie
+        if (ratio > 0 && ratio < 1) {
+            const percent = Math.round(ratio * 100);
+            // Logujemy tylko co 10% postępu aby nie zaśmiecać logów
+            if (percent % 10 === 0) {
+                logger.log(`Postęp przetwarzania: ${percent}%`, logger.INFO);
+            }
+        }
     }
 
     // Funkcja do rysowania klatki wideo na kanwie z odpowiednim dopasowaniem orientacji
@@ -579,9 +752,12 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.processingStatus.textContent = 'Przygotowanie do przetwarzania...';
         updateProgressBar(0.05);
         
+        logger.log('Rozpoczynam proces łączenia filmów', logger.INFO);
+        
         try {
             // Sprawdź, czy przeglądarka obsługuje potrzebne API
             if (!window.MediaRecorder) {
+                logger.log('Brak wsparcia dla MediaRecorder API', logger.ERROR);
                 throw new Error('Twoja przeglądarka nie obsługuje MediaRecorder API. Spróbuj użyć nowszej przeglądarki.');
             }
             
@@ -589,40 +765,46 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const testCanvas = document.createElement('canvas');
                 if (!testCanvas.getContext || !testCanvas.getContext('2d')) {
+                    logger.log('Brak wsparcia dla Canvas API', logger.ERROR);
                     throw new Error('Twoja przeglądarka nie obsługuje Canvas API.');
                 }
                 
                 // Sprawdź czy canvas.captureStream jest obsługiwany
                 if (!testCanvas.captureStream) {
+                    logger.log('Brak wsparcia dla Canvas.captureStream()', logger.ERROR);
                     throw new Error('Twoja przeglądarka nie obsługuje captureStream dla Canvas.');
                 }
             } catch (e) {
-                console.error('Błąd podczas testowania Canvas API:', e);
+                logger.log('Błąd podczas testowania Canvas API: ' + e.message, logger.ERROR);
                 throw new Error('Twoja przeglądarka nie obsługuje wymaganych funkcji Canvas. Spróbuj użyć nowszej przeglądarki.');
             }
             
             // Sprawdź obsługę AudioContext
             try {
                 if (!window.AudioContext && !window.webkitAudioContext) {
+                    logger.log('Brak wsparcia dla AudioContext API', logger.ERROR);
                     throw new Error('Twoja przeglądarka nie obsługuje AudioContext API.');
                 }
             } catch (e) {
-                console.error('Błąd podczas testowania AudioContext API:', e);
+                logger.log('Błąd podczas testowania AudioContext API: ' + e.message, logger.ERROR);
                 throw new Error('Twoja przeglądarka nie obsługuje AudioContext API. Spróbuj użyć nowszej przeglądarki.');
             }
             
             const supportedMimeType = getSupportedMimeType();
             if (!supportedMimeType) {
+                logger.log('Nie znaleziono obsługiwanego formatu wideo', logger.ERROR);
                 throw new Error('Twoja przeglądarka nie obsługuje żadnego z obsługiwanych formatów wideo.');
             }
             
             // Zapisujemy wybrany typ MIME w stanie aplikacji
             appState.selectedMimeType = supportedMimeType;
-            console.log('Wybrany format wideo:', supportedMimeType);
+            logger.log('Wybrany format wideo: ' + supportedMimeType, logger.INFO);
             
             // Ustal docelowe wymiary na podstawie wybranej orientacji
             const targetWidth = appState.targetOrientation === 'landscape' ? 1280 : 720;
             const targetHeight = appState.targetOrientation === 'landscape' ? 720 : 1280;
+            
+            logger.log(`Docelowe wymiary wideo: ${targetWidth}x${targetHeight} (${appState.targetOrientation})`, logger.INFO);
             
             // Przygotowanie filmów
             const videoElements = [];
@@ -630,18 +812,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 elements.processingStatus.textContent = `Wczytywanie filmu ${i+1} z ${appState.selectedFiles.length}...`;
                 updateProgressBar(0.1 + (i / appState.selectedFiles.length) * 0.4);
                 
+                logger.log(`Wczytywanie filmu ${i+1} z ${appState.selectedFiles.length}: ${appState.selectedFiles[i].file.name}`, logger.INFO);
                 const video = await createVideoElement(appState.selectedFiles[i].file);
                 if (video) {
                     videoElements.push({
                         element: video,
                         info: appState.selectedFiles[i]
                     });
+                    logger.log(`Film ${i+1} wczytany pomyślnie, wymiary: ${video.videoWidth}x${video.videoHeight}`, logger.INFO);
+                } else {
+                    logger.log(`Nie udało się wczytać filmu ${i+1}: ${appState.selectedFiles[i].file.name}`, logger.ERROR);
                 }
             }
             
             if (videoElements.length < 2) {
+                logger.log('Niewystarczająca liczba wczytanych filmów', logger.ERROR);
                 throw new Error('Nie udało się wczytać wystarczającej liczby filmów.');
             }
+            
+            logger.log(`Wczytano pomyślnie ${videoElements.length} z ${appState.selectedFiles.length} filmów`, logger.INFO);
             
             // Przygotowanie kanwy do renderowania
             const canvas = document.createElement('canvas');
@@ -651,23 +840,24 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Przygotowanie recordera do nagrywania połączonego wideo
             try {
-                console.log('Tworzenie strumienia z kanwy...');
+                logger.log('Tworzenie strumienia z kanwy...', logger.INFO);
                 const stream = canvas.captureStream(30); // 30 fps
-                console.log('Strumień z kanwy utworzony:', stream.getVideoTracks().length, 'ścieżek wideo');
+                logger.log(`Strumień z kanwy utworzony: ${stream.getVideoTracks().length} ścieżek wideo`, logger.INFO);
                 
                 // Dodajemy dźwięk z każdego wideo
-                console.log('Tworzenie AudioContext...');
+                logger.log('Tworzenie AudioContext...', logger.INFO);
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                 const audioContext = new AudioContextClass();
                 const audioDestination = audioContext.createMediaStreamDestination();
-                console.log('AudioContext utworzony:', audioDestination.stream.getAudioTracks().length, 'ścieżek audio');
+                logger.log(`AudioContext utworzony: ${audioDestination.stream.getAudioTracks().length} ścieżek audio`, logger.INFO);
                 
                 // Łączymy strumień z audio
-                console.log('Łączenie strumieni audio i wideo...');
+                logger.log('Łączenie strumieni audio i wideo...', logger.INFO);
                 const videoTracks = stream.getVideoTracks();
                 const audioTracks = audioDestination.stream.getAudioTracks();
                 
                 if (videoTracks.length === 0) {
+                    logger.log('Brak ścieżek wideo w strumieniu', logger.ERROR);
                     throw new Error('Nie udało się utworzyć strumienia wideo z kanwy.');
                 }
                 
@@ -676,44 +866,56 @@ document.addEventListener('DOMContentLoaded', () => {
                     ...audioTracks
                 ]);
                 
-                console.log('Połączony strumień utworzony:', 
-                            'wideo:', combinedStream.getVideoTracks().length, 
-                            'audio:', combinedStream.getAudioTracks().length);
+                logger.log(`Połączony strumień utworzony: wideo: ${combinedStream.getVideoTracks().length}, audio: ${combinedStream.getAudioTracks().length}`, logger.INFO);
                 
                 // Ustawiamy opcje recordera
                 const options = {
                     mimeType: supportedMimeType,
-                    videoBitsPerSecond: 5000000 // 5 Mbps
+                    videoBitsPerSecond: 8000000, // 8 Mbps dla lepszej jakości
+                    audioBitsPerSecond: 128000   // 128 kbps dla audio
                 };
                 
-                console.log('Tworzenie MediaRecorder z opcjami:', options);
+                logger.log(`Tworzenie MediaRecorder z opcjami: ${JSON.stringify(options)}`, logger.INFO);
                 
                 let recorder;
                 try {
                     recorder = new MediaRecorder(combinedStream, options);
-                    console.log('MediaRecorder utworzony pomyślnie, stan:', recorder.state);
+                    logger.log(`MediaRecorder utworzony pomyślnie, stan: ${recorder.state}`, logger.INFO);
                 } catch (recorderError) {
-                    console.error('Błąd podczas tworzenia MediaRecorder z opcjami:', recorderError);
+                    logger.log(`Błąd podczas tworzenia MediaRecorder z opcjami: ${recorderError.message}`, logger.ERROR);
                     
-                    // Próba utworzenia bez opcji
-                    console.log('Próba utworzenia MediaRecorder bez opcji...');
-                    recorder = new MediaRecorder(combinedStream);
-                    console.log('MediaRecorder utworzony bez opcji, stan:', recorder.state);
+                    // Próba utworzenia z mniejszą jakością
+                    logger.log('Próba utworzenia MediaRecorder z mniejszą jakością...', logger.WARNING);
+                    try {
+                        const fallbackOptions = {
+                            mimeType: supportedMimeType,
+                            videoBitsPerSecond: 2500000 // 2.5 Mbps
+                        };
+                        recorder = new MediaRecorder(combinedStream, fallbackOptions);
+                        logger.log(`MediaRecorder utworzony z mniejszą jakością, stan: ${recorder.state}`, logger.INFO);
+                    } catch (fallbackError) {
+                        // Próba utworzenia bez opcji jako ostateczność
+                        logger.log('Próba utworzenia MediaRecorder bez opcji...', logger.WARNING);
+                        recorder = new MediaRecorder(combinedStream);
+                        logger.log(`MediaRecorder utworzony bez opcji, stan: ${recorder.state}`, logger.INFO);
+                    }
                 }
                 
                 // Tablica na nagrywane dane
                 const chunks = [];
                 recorder.ondataavailable = e => {
-                    console.log('Odebrano dane z MediaRecorder:', e.data.size, 'bajtów');
+                    logger.log(`Odebrano dane z MediaRecorder: ${e.data.size} bajtów`, logger.INFO);
                     if (e.data.size > 0) {
                         chunks.push(e.data);
+                    } else {
+                        logger.log('Otrzymano pusty fragment danych (rozmiar 0)', logger.WARNING);
                     }
                 };
                 
                 // Ustawienie obsługi błędów nagrywania
                 recorder.onerror = (evt) => {
-                    console.error('Błąd podczas nagrywania:', evt);
-                    alert('Wystąpił błąd podczas łączenia filmów. Spróbuj ponownie lub wybierz inne pliki.');
+                    logger.log(`Błąd podczas nagrywania: ${evt.type}`, logger.ERROR);
+                    messageBox.show('Wystąpił błąd podczas łączenia filmów. Spróbuj ponownie lub wybierz inne pliki.');
                     goToNextStep(elements.stepProcessing, elements.stepUpload);
                     appState.processing = false;
                 };
@@ -725,53 +927,131 @@ document.addEventListener('DOMContentLoaded', () => {
                         elements.processingStatus.textContent = 'Finalizowanie...';
                         updateProgressBar(0.95);
                         
-                        console.log('Zatrzymano nagrywanie. Liczba zebranych fragmentów:', chunks.length);
+                        logger.log(`Zatrzymano nagrywanie. Liczba zebranych fragmentów: ${chunks.length}`, logger.INFO);
                         
                         if (chunks.length === 0) {
                             // Wymuszamy zebranie ostatnich danych przed zamknięciem
                             try {
                                 recorder.requestData();
+                                logger.log('Wymuszono ostatnie zebranie danych', logger.INFO);
                                 // Dajemy chwilę na zebranie danych
-                                await new Promise(resolve => setTimeout(resolve, 500));
+                                await new Promise(resolve => setTimeout(resolve, 1000));
                             } catch (e) {
-                                console.warn('Nie udało się wymuszenie zebrania danych:', e);
+                                logger.log(`Nie udało się wymuszenie zebrania danych: ${e.message}`, logger.WARNING);
                             }
                             
                             // Jeśli nadal brak danych, spróbujmy alternatywnej metody
                             if (chunks.length === 0) {
-                                console.warn('Brak danych z MediaRecorder. Próbuję alternatywnej metody tworzenia wideo...');
+                                logger.log('Brak danych z MediaRecorder. Próbuję alternatywnej metody tworzenia wideo...', logger.WARNING);
+                                messageBox.show('Wystąpił problem podczas nagrywania. Próbuję alternatywnej metody...');
                                 
-                                // Alternatywna metoda - utwórz pojedynczą klatkę z pierwszego wideo
-                                // jako rozwiązanie awaryjne, żeby użytkownik dostał jakikolwiek plik
+                                // Alternatywna metoda - renderuj każdy film do oddzielnych klatek i łącz je
                                 try {
+                                    // Tworzymy tablicę na fragmenty danych obrazu
+                                    const frameChunks = [];
+                                    
+                                    // Renderujemy po jednej klatce z każdego filmu
+                                    for (let i = 0; i < videoElements.length; i++) {
+                                        const videoInfo = videoElements[i];
+                                        // Ustawiamy czas na środek filmu dla reprezentatywnej klatki
+                                        const video = videoInfo.element;
+                                        
+                                        try {
+                                            // Ustawiamy czas na 1 sekundę, jeśli film jest dłuższy
+                                            if (video.duration > 2) {
+                                                video.currentTime = 1;
+                                                await new Promise(r => setTimeout(r, 100));
+                                            }
+                                            
+                                            // Renderujemy klatkę
+                                            drawVideoFrame(videoInfo, ctx, canvas);
+                                            
+                                            // Pobieramy dane obrazu
+                                            const imageData = canvas.toDataURL('image/jpeg', 0.95);
+                                            frameChunks.push(imageData);
+                                            
+                                            updateProgressBar(0.5 + (i / videoElements.length) * 0.4);
+                                        } catch (frameError) {
+                                            console.error(`Błąd podczas renderowania klatki dla filmu ${i}:`, frameError);
+                                        }
+                                    }
+                                    
+                                    if (frameChunks.length > 0) {
+                                        // Tworzymy stronę HTML ze wszystkimi klatkami
+                                        let htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Połączone filmy - klatki</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { color: #4a6bff; }
+        .frames { display: flex; flex-direction: column; gap: 20px; }
+        .frame { width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.2); border-radius: 8px; }
+        .info { margin-bottom: 40px; }
+    </style>
+</head>
+<body>
+    <h1>Połączone filmy - klatki</h1>
+    <div class="info">
+        <p>Nagrywanie wideo nie powiodło się, ale udało się zapisać klatki z filmów.</p>
+        <p>Poniżej znajduje się ${frameChunks.length} klatek z wybranych filmów.</p>
+    </div>
+    <div class="frames">`;
+                                        
+                                        // Dodajemy każdą klatkę
+                                        frameChunks.forEach((dataUrl, index) => {
+                                            htmlContent += `
+        <img class="frame" src="${dataUrl}" alt="Klatka ${index+1}">`;
+                                        });
+                                        
+                                        htmlContent += `
+    </div>
+</body>
+</html>`;
+                                        
+                                        // Tworzymy blob HTML
+                                        const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+                                        console.log('Utworzono alternatywny plik HTML z klatkami:', htmlBlob.size, 'bajtów');
+                                        
+                                        appState.outputVideo = htmlBlob;
+                                        elements.resultPreview.src = URL.createObjectURL(
+                                            new Blob([`<html><body><div style="text-align:center;padding:20px;"><p>Podgląd HTML niedostępny. Pobierz plik, aby zobaczyć klatki.</p></div></body></html>`], 
+                                            { type: 'text/html' })
+                                        );
+                                        
+                                        // Informujemy użytkownika
+                                        messageBox.show('Nagranie wideo nie powiodło się. Zamiast tego zapisano klatki z filmów w pliku HTML.');
+                                        
+                                        goToNextStep(elements.stepProcessing, elements.stepDownload);
+                                        return;
+                                    }
+                                    
+                                    // Jeśli nie udało się stworzyć klatek, próbujemy ostatecznej metody
                                     const firstVideo = videoElements[0]?.element;
                                     if (firstVideo) {
                                         // Narysuj pierwszą klatkę na kanwie
                                         drawVideoFrame(videoElements[0], ctx, canvas);
                                         
                                         // Utwórz blob z kanwy w sposób synchroniczny
-                                        const dataURL = canvas.toDataURL('image/png');
-                                        const byteString = atob(dataURL.split(',')[1]);
-                                        const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
+                                        const dataURL = canvas.toDataURL('image/jpeg', 0.95);
                                         
-                                        // Konwersja base64 na Blob
-                                        const ab = new ArrayBuffer(byteString.length);
-                                        const ia = new Uint8Array(ab);
-                                        for (let i = 0; i < byteString.length; i++) {
-                                            ia[i] = byteString.charCodeAt(i);
-                                        }
+                                        // Tworzenie linku do pobrania
+                                        const blob = await fetch(dataURL).then(r => r.blob());
+                                        logger.log(`Utworzono zastępczy obraz JPEG: ${blob.size} bajtów`, logger.INFO);
                                         
-                                        const blob = new Blob([ab], { type: mimeString });
-                                        console.log('Utworzono zastępczy obraz PNG (synchronicznie):', blob.size, 'bajtów');
                                         appState.outputVideo = blob;
                                         elements.resultPreview.src = URL.createObjectURL(blob);
+                                        
+                                        // Informujemy użytkownika
+                                        messageBox.show('Nagranie wideo nie powiodło się. Zapisano tylko pojedynczą klatkę z pierwszego filmu.');
+                                        
                                         goToNextStep(elements.stepProcessing, elements.stepDownload);
-                                        return; // Przerwij dalsze wykonanie funkcji
+                                        return;
                                     } else {
                                         throw new Error('Brak dostępnych elementów wideo.');
                                     }
                                 } catch (fallbackError) {
-                                    console.error('Błąd podczas tworzenia zastępczego obrazu:', fallbackError);
+                                    logger.log(`Błąd podczas tworzenia zastępczego obrazu: ${fallbackError.message}`, logger.ERROR);
                                     throw new Error('Nie udało się nagrać wideo ani utworzyć obrazu zastępczego.');
                                 }
                             }
@@ -779,21 +1059,44 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // Określenie typu wyjściowego na podstawie mimeType
                         let outputType = appState.selectedMimeType.split(';')[0]; // Usuwamy kodeki z mimeType
-                        console.log('Tworzenie Blob z fragmentów, typ:', outputType);
+                        logger.log(`Tworzenie Blob z fragmentów, typ: ${outputType}`, logger.INFO);
                         
-                        const blob = new Blob(chunks, { type: outputType });
-                        console.log('Utworzono Blob o rozmiarze:', blob.size, 'bajtów');
+                        // Sprawdź, czy mamy fragmenty o zerowym rozmiarze i usuń je
+                        const validChunks = chunks.filter(chunk => chunk.size > 0);
+                        if (validChunks.length < chunks.length) {
+                            logger.log(`Usunięto ${chunks.length - validChunks.length} pustych fragmentów`, logger.WARNING);
+                        }
+                        
+                        if (validChunks.length === 0) {
+                            logger.log('Brak danych do utworzenia wideo', logger.ERROR);
+                            throw new Error('Brak danych do utworzenia wideo.');
+                        }
+                        
+                        const blob = new Blob(validChunks, { type: outputType });
+                        logger.log(`Utworzono Blob o rozmiarze: ${blob.size} bajtów`, logger.INFO);
+                        
+                        if (blob.size < 1000) {
+                            logger.log(`Utworzony plik jest zbyt mały: ${blob.size} bajtów`, logger.ERROR);
+                            throw new Error('Utworzony plik jest zbyt mały (< 1KB). Prawdopodobnie nagrywanie nie powiodło się.');
+                        }
                         
                         appState.outputVideo = blob;
                         
                         // Wyświetl podgląd
                         elements.resultPreview.src = URL.createObjectURL(blob);
+                        elements.resultPreview.onloadeddata = () => {
+                            logger.log('Podgląd wideo załadowany pomyślnie', logger.INFO);
+                        };
+                        elements.resultPreview.onerror = (e) => {
+                            logger.log(`Błąd podczas ładowania podglądu: ${e.type}`, logger.ERROR);
+                            messageBox.show('Nie można wyświetlić podglądu wideo. Możesz spróbować pobrać plik.');
+                        };
                         
                         // Przejdź do kroku pobierania
                         goToNextStep(elements.stepProcessing, elements.stepDownload);
                     } catch (error) {
-                        console.error('Błąd podczas finalizacji:', error);
-                        alert('Wystąpił błąd podczas finalizacji: ' + error.message);
+                        logger.log(`Błąd podczas finalizacji: ${error.message}`, logger.ERROR);
+                        messageBox.show('Wystąpił błąd podczas finalizacji: ' + error.message);
                         goToNextStep(elements.stepProcessing, elements.stepUpload);
                     } finally {
                         appState.processing = false;
@@ -807,18 +1110,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 async function playNextVideo() {
                     if (currentVideoIndex >= videoElements.length) {
                         // Zakończ nagrywanie, gdy wszystkie filmy zostały odtworzone
-                        console.log('Wszystkie filmy zostały odtworzone, zatrzymuję nagrywanie');
+                        logger.log('Wszystkie filmy zostały odtworzone, zatrzymuję nagrywanie', logger.INFO);
                         
                         // Wymuszamy zapisanie danych przed zatrzymaniem
                         if (recorder.state === 'recording') {
                             recorder.requestData();
                             
-                            // Dajemy czas na przetworzenie ostatniego requestData
+                            // Dajemy więcej czasu na przetworzenie ostatniego requestData
                             setTimeout(() => {
+                                try {
                                 recorder.stop();
-                            }, 100);
+                                    logger.log('Recorder zatrzymany pomyślnie', logger.INFO);
+                                } catch (e) {
+                                    logger.log(`Błąd podczas zatrzymywania recordera: ${e.message}`, logger.ERROR);
+                                    
+                                    // Próba alternatywnej metody finalizacji
+                                    if (chunks.length > 0) {
+                                        try {
+                                            const outputType = appState.selectedMimeType.split(';')[0];
+                                            const blob = new Blob(chunks, { type: outputType });
+                                            logger.log(`Utworzono Blob alternatywną metodą: ${blob.size} bajtów`, logger.INFO);
+                                            appState.outputVideo = blob;
+                                            elements.resultPreview.src = URL.createObjectURL(blob);
+                                            goToNextStep(elements.stepProcessing, elements.stepDownload);
+                                        } catch (finalizeError) {
+                                            logger.log(`Błąd podczas alternatywnej finalizacji: ${finalizeError.message}`, logger.ERROR);
+                                            messageBox.show('Wystąpił błąd podczas finalizacji. Spróbuj ponownie z mniejszą liczbą filmów.');
+                                            goToNextStep(elements.stepProcessing, elements.stepUpload);
+                                        } finally {
+                                            appState.processing = false;
+                                        }
+                                    }
+                                }
+                            }, 500); // Zwiększamy czas oczekiwania do 500ms
                         } else {
+                            try {
                             recorder.stop();
+                                logger.log('Recorder zatrzymany pomyślnie (był nieaktywny)', logger.INFO);
+                            } catch (e) {
+                                logger.log(`Błąd podczas zatrzymywania nieaktywnego recordera: ${e.message}`, logger.ERROR);
+                            }
                         }
                         return;
                     }
@@ -830,22 +1161,72 @@ document.addEventListener('DOMContentLoaded', () => {
                     elements.processingStatus.textContent = `Łączenie filmów: ${currentVideoIndex + 1} z ${videoElements.length}`;
                     updateProgressBar(0.5 + (currentVideoIndex / videoElements.length) * 0.45);
                     
+                    logger.log(`Rozpoczynam odtwarzanie filmu ${currentVideoIndex + 1}: ${videoInfo.info.file.name}`, logger.INFO);
+                    
                     try {
-                        // Podłącz źródło dźwięku dla tego wideo do audioContext
-                        const audioSource = audioContext.createMediaElementSource(video);
-                        audioSource.connect(audioDestination);
-                        
-                        // Odtwarzaj wideo od początku
+                        // Resetujemy czasy wideo dla lepszej synchronizacji
                         video.currentTime = 0;
+                        await new Promise(resolve => setTimeout(resolve, 100)); // Dajemy czas na ustawienie currentTime
                         
-                        // Oczekujemy na rozpoczęcie odtwarzania
-                        await video.play();
+                        // Podłącz źródło dźwięku dla tego wideo do audioContext
+                        let audioSource;
+                        try {
+                            audioSource = audioContext.createMediaElementSource(video);
+                            
+                            // Dodajemy limiter dla audio, aby zapobiec zniekształceniom
+                            const compressor = audioContext.createDynamicsCompressor();
+                            compressor.threshold.value = -24;
+                            compressor.knee.value = 30;
+                            compressor.ratio.value = 12;
+                            compressor.attack.value = 0.003;
+                            compressor.release.value = 0.25;
+                            
+                            audioSource.connect(compressor);
+                            compressor.connect(audioDestination);
+                            
+                            console.log(`Audio źródło dla filmu ${currentVideoIndex + 1} podłączone pomyślnie`);
+                        } catch (audioError) {
+                            console.error(`Błąd podczas podłączania źródła audio dla filmu ${currentVideoIndex + 1}:`, audioError);
+                            
+                            // Jeśli nie możemy podłączyć audio, próbujemy kontynuować bez niego
+                            console.log(`Kontynuuję bez audio dla filmu ${currentVideoIndex + 1}`);
+                        }
+                        
+                        // Przygotowanie do odtwarzania
+                        video.playbackRate = 1.0; // Upewniamy się, że prędkość odtwarzania jest normalna
+                        
+                        // Oczekujemy na rozpoczęcie odtwarzania z timeoutem
+                        const playPromise = video.play();
+                        
+                        if (playPromise !== undefined) {
+                            // Jeśli play() zwraca Promise (nowoczesne przeglądarki)
+                            await Promise.race([
+                                playPromise,
+                                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+                            ]).catch(error => {
+                                console.warn(`Timeout lub błąd podczas rozpoczynania odtwarzania wideo ${currentVideoIndex + 1}:`, error);
+                                // Próbujemy ponownie odtworzyć
+                                return video.play().catch(e => {
+                                    console.error(`Nie udało się odtworzyć wideo ${currentVideoIndex + 1} po ponownej próbie:`, e);
+                                    // Kontynuujemy mimo błędu
+                                });
+                            });
+                        }
                         
                         // Włączamy nagrywanie jeśli to pierwszy film
                         if (currentVideoIndex === 0) {
                             console.log('Rozpoczynam nagrywanie pierwszego filmu');
                             // Ustawiamy mniejszy interwał, aby zbierać więcej danych
-                            recorder.start(200); // Zbieraj dane co 200ms
+                            try {
+                                recorder.start(100); // Zmniejszamy interwał do 100ms dla lepszej jakości
+                                console.log('Recorder uruchomiony, stan:', recorder.state);
+                            } catch (recorderError) {
+                                console.error('Błąd podczas uruchamiania recordera:', recorderError);
+                                messageBox.show('Wystąpił błąd podczas uruchamiania nagrywania. Spróbuj ponownie.');
+                                goToNextStep(elements.stepProcessing, elements.stepUpload);
+                                appState.processing = false;
+                                return;
+                            }
                         }
                         
                         // Renderuj klatki podczas odtwarzania
@@ -855,18 +1236,29 @@ document.addEventListener('DOMContentLoaded', () => {
                                     console.log(`Film ${currentVideoIndex + 1} zakończony, przechodzę do następnego`);
                                     // Wymuszamy zebranie danych przed przejściem do następnego wideo
                                     if (recorder.state === 'recording') {
+                                        try {
                                         recorder.requestData();
+                                            console.log(`Wymuszono zebranie danych po zakończeniu filmu ${currentVideoIndex + 1}`);
+                                        } catch (e) {
+                                            console.warn(`Błąd podczas wymuszania zebrania danych dla filmu ${currentVideoIndex + 1}:`, e);
+                                        }
                                     }
                                     
                                     // Przejdź do następnego wideo, gdy bieżące się zakończy
                                     currentVideoIndex++;
-                                    setTimeout(playNextVideo, 100); // Opóźnienie dla płynniejszego przejścia
+                                    // Dłuższe opóźnienie dla lepszej finalizacji nagrywania
+                                    setTimeout(playNextVideo, 300); // Zwiększamy opóźnienie dla płynniejszego przejścia
                                 }
                                 return;
                             }
                             
+                            try {
                             // Rysuj bieżącą klatkę
                             drawVideoFrame(videoInfo, ctx, canvas);
+                            } catch (renderError) {
+                                console.error(`Błąd podczas renderowania klatki dla filmu ${currentVideoIndex + 1}:`, renderError);
+                                // Kontynuujemy mimo błędu
+                            }
                             
                             // Kontynuuj renderowanie
                             requestAnimationFrame(renderFrame);
@@ -878,7 +1270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.error(`Błąd podczas odtwarzania wideo ${currentVideoIndex}:`, error);
                         // Przejdź do następnego wideo nawet w przypadku błędu
                         currentVideoIndex++;
-                        setTimeout(playNextVideo, 100);
+                        setTimeout(playNextVideo, 300);
                     }
                 }
                 
@@ -887,13 +1279,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 
             } catch (error) {
                 console.error('Błąd podczas inicjalizacji przetwarzania wideo:', error);
-                alert('Wystąpił błąd podczas inicjalizacji przetwarzania: ' + error.message);
+                messageBox.show('Wystąpił błąd podczas inicjalizacji przetwarzania: ' + error.message);
                 goToNextStep(elements.stepProcessing, elements.stepUpload);
                 appState.processing = false;
             }
         } catch (error) {
             console.error('Błąd podczas przetwarzania wideo:', error);
-            alert('Wystąpił błąd podczas przetwarzania wideo: ' + error.message);
+            messageBox.show('Wystąpił błąd podczas przetwarzania wideo: ' + error.message);
             goToNextStep(elements.stepProcessing, elements.stepUpload);
             appState.processing = false;
         }
@@ -996,7 +1388,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Na iOS czasami files może być null lub undefined
             if (!e.target.files || e.target.files.length === 0) {
                 console.error('Brak plików lub problem z dostępem do e.target.files na iOS');
-                alert('Nie można odczytać wybranych plików. Spróbuj wybrać pliki ponownie lub użyj innej przeglądarki.');
+                messageBox.show('Nie można odczytać wybranych plików. Spróbuj wybrać pliki ponownie lub użyj innej przeglądarki.');
                 return;
             }
             
@@ -1033,7 +1425,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     elements.orientationNextButton.addEventListener('click', () => {
         if (!appState.targetOrientation) {
-            alert('Proszę wybrać orientację dla połączonego wideo.');
+            messageBox.show('Proszę wybrać orientację dla połączonego wideo.');
             return;
         }
         
@@ -1043,9 +1435,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     elements.processingCancelButton.addEventListener('click', () => {
         if (appState.processing) {
-            if (confirm('Czy na pewno chcesz anulować przetwarzanie?')) {
-                goToNextStep(elements.stepProcessing, elements.stepUpload);
-            }
+            messageBox.confirm('Czy na pewno chcesz anulować przetwarzanie?', (confirmed) => {
+                if (confirmed) {
+                    logger.log('Anulowano przetwarzanie na żądanie użytkownika', logger.WARNING);
+                    goToNextStep(elements.stepProcessing, elements.stepUpload);
+                    appState.processing = false;
+                }
+            });
         } else {
             goToNextStep(elements.stepProcessing, elements.stepUpload);
         }
@@ -1054,7 +1450,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Obsługa przycisku pobierania
     elements.downloadButton.addEventListener('click', () => {
         if (!appState.outputVideo) {
-            alert('Brak pliku wideo do pobrania.');
+            logger.log('Próba pobrania pliku, gdy brak wynikowego wideo', logger.ERROR);
+            messageBox.show('Brak pliku wideo do pobrania.');
             return;
         }
         
@@ -1074,11 +1471,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             try {
                 mimeType = appState.outputVideo.type.toLowerCase();
+                logger.log(`Odczytany typ pliku: ${mimeType}`, logger.INFO);
             } catch (e) {
-                console.warn('Nie można odczytać typu MIME, używam domyślnego:', e);
+                logger.log(`Nie można odczytać typu MIME: ${e.message}, używam domyślnego`, logger.WARNING);
             }
-            
-            console.log('Typ pliku wyjściowego:', mimeType);
             
             if (mimeType.includes('mp4')) {
                 extension = 'mp4';
@@ -1088,9 +1484,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 extension = 'png';
             } else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
                 extension = 'jpg';
+            } else if (mimeType.includes('html')) {
+                extension = 'html';
             }
             
-            a.download = `polaczony-film-${dateStr}.${extension}`;
+            const fileName = `polaczony-film-${dateStr}.${extension}`;
+            a.download = fileName;
+            logger.log(`Rozpoczynam pobieranie pliku: ${fileName} (${appState.outputVideo.size} bajtów)`, logger.INFO);
             
             // Dodanie elementu do strony, kliknięcie i usunięcie
             document.body.appendChild(a);
@@ -1098,10 +1498,11 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url); // Zwolnienie zasobów
+                logger.log('Pobieranie pliku zainicjowane', logger.INFO);
             }, 100);
         } catch (error) {
-            console.error('Błąd podczas pobierania pliku:', error);
-            alert('Wystąpił błąd podczas pobierania pliku: ' + error.message);
+            logger.log(`Błąd podczas pobierania pliku: ${error.message}`, logger.ERROR);
+            messageBox.show('Wystąpił błąd podczas pobierania pliku: ' + error.message);
         }
     });
     
@@ -1173,4 +1574,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Ustawienie domyślnie aktywnych przycisków
     elements.optionLandscape.classList.add('selected');
     elements.formatAuto.classList.add('selected');
+    
+    // Inicjalizacja systemów logowania i komunikatów
+    logger.init();
+    messageBox.init();
+    
+    // Powitalne logo
+    logger.log('Aplikacja do łączenia filmików została uruchomiona.', logger.INFO);
+    logger.log('Wszystkie operacje są wykonywane lokalnie w przeglądarce.', logger.INFO);
 }); 
