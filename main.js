@@ -43,6 +43,43 @@ document.addEventListener('DOMContentLoaded', () => {
             // Wykryj iOS Safari
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
             
+            const handleError = (e) => {
+                console.error('Błąd podczas wykrywania orientacji wideo:', file.name, e);
+                if (video.src && video.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(video.src);
+                }
+                
+                // Próbujemy alternatywnej metody dla iOS, gdy wystąpi błąd
+                if (isIOS && !video._triedAlternative) {
+                    video._triedAlternative = true;
+                    console.log('Próba alternatywnej metody wykrywania orientacji na iOS');
+                    
+                    // Tworzymy obiekt URL bezpośrednio
+                    try {
+                        const blobUrl = URL.createObjectURL(file);
+                        console.log('Utworzono blob URL bezpośrednio dla orientacji:', blobUrl);
+                        video.src = blobUrl;
+                        return; // Nie rozwiązujemy jeszcze Promise - czekamy na onloadedmetadata lub kolejny błąd
+                    } catch (altError) {
+                        console.error('Alternatywna metoda również nie działa:', altError);
+                    }
+                }
+                
+                // W przypadku błędu, zakładamy orientację landscape jako domyślną
+                console.log('Nie udało się wykryć orientacji, używam domyślnej (landscape)');
+                
+                // Sprawdź nazwę pliku - jeśli zawiera 'portrait' lub 'pionowy', to może być pionowy
+                const fileName = file.name.toLowerCase();
+                let guessedOrientation = 'landscape';
+                
+                if (fileName.includes('portrait') || fileName.includes('pionowy') || fileName.includes('vertical')) {
+                    console.log('Na podstawie nazwy pliku wnioskuję, że film jest pionowy:', fileName);
+                    guessedOrientation = 'portrait';
+                }
+                
+                resolve({ file, orientation: guessedOrientation, width: 0, height: 0 });
+            };
+            
             video.onloadedmetadata = () => {
                 if (video.src && video.src.startsWith('blob:')) {
                     URL.revokeObjectURL(video.src);
@@ -53,42 +90,58 @@ document.addEventListener('DOMContentLoaded', () => {
                 resolve({ file, orientation, width: video.videoWidth, height: video.videoHeight });
             };
             
-            video.onerror = (e) => {
-                console.error('Błąd podczas wykrywania orientacji wideo:', file.name, e);
-                if (video.src && video.src.startsWith('blob:')) {
-                    URL.revokeObjectURL(video.src);
-                }
-                // W przypadku błędu, zakładamy orientację landscape jako domyślną
-                resolve({ file, orientation: 'landscape', width: 0, height: 0 });
-            };
+            video.onerror = handleError;
             
             // Dla iOS używamy FileReader, podobnie jak w createVideoElement
             if (isIOS) {
-                console.log('Wykryto iOS, używam specjalnej metody wykrywania orientacji');
+                console.log('Wykryto iOS, używam specjalnej metody wykrywania orientacji dla', file.name);
                 const reader = new FileReader();
                 
                 reader.onload = function(e) {
+                    console.log('FileReader wczytał plik dla orientacji, rozmiar:', e.target.result.length);
                     // Safari na iOS może mieć problemy z Object URL, więc używamy dataURL
-                    fetch(e.target.result)
-                        .then(response => response.blob())
-                        .then(blob => {
-                            video.src = URL.createObjectURL(blob);
-                        })
-                        .catch(error => {
-                            console.error('Błąd podczas konwersji do Blob dla orientacji:', error);
-                            video.src = e.target.result;
-                        });
+                    try {
+                        fetch(e.target.result)
+                            .then(response => {
+                                console.log('Fetch orientacji odpowiedział:', response.status);
+                                return response.blob();
+                            })
+                            .then(blob => {
+                                console.log('Utworzono Blob dla orientacji, rozmiar:', blob.size);
+                                const blobUrl = URL.createObjectURL(blob);
+                                console.log('URL dla orientacji:', blobUrl);
+                                video.src = blobUrl;
+                            })
+                            .catch(error => {
+                                console.error('Błąd podczas konwersji do Blob dla orientacji:', error);
+                                video.src = e.target.result;
+                            });
+                    } catch (error) {
+                        console.error('Błąd przy fetch dla orientacji:', error);
+                        video.src = e.target.result;
+                    }
                 };
                 
-                reader.onerror = function() {
-                    console.error('Błąd FileReader podczas wykrywania orientacji');
-                    resolve({ file, orientation: 'landscape', width: 0, height: 0 });
+                reader.onerror = function(error) {
+                    console.error('Błąd FileReader podczas wykrywania orientacji:', error);
+                    handleError(new Error('Błąd odczytu pliku za pomocą FileReader (orientacja)'));
                 };
                 
-                reader.readAsDataURL(file);
+                // Początek odczytu pliku
+                try {
+                    reader.readAsDataURL(file);
+                } catch (error) {
+                    console.error('Błąd podczas inicjacji odczytu pliku dla orientacji:', error);
+                    handleError(error);
+                }
             } else {
                 // Standardowa metoda dla innych przeglądarek
-                video.src = URL.createObjectURL(file);
+                try {
+                    video.src = URL.createObjectURL(file);
+                } catch (error) {
+                    console.error('Błąd podczas tworzenia URL dla pliku (orientacja):', error);
+                    handleError(error);
+                }
             }
         });
     }
@@ -132,19 +185,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Obsługa dodawania plików
     async function handleFileSelection(files) {
-        if (files.length === 0) return;
-        
-        const fileInfoPromises = [];
-        for (let i = 0; i < files.length; i++) {
-            if (files[i].type.startsWith('video/')) {
-                fileInfoPromises.push(detectOrientation(files[i]));
-            }
+        if (!files || files.length === 0) {
+            console.error('Brak plików do przetworzenia');
+            return;
         }
         
-        const fileInfos = await Promise.all(fileInfoPromises);
-        appState.selectedFiles = [...appState.selectedFiles, ...fileInfos];
-        updateSelectedFiles();
-        checkNextButtonState();
+        console.log(`Rozpoczynam przetwarzanie ${files.length} plików`);
+        
+        const fileInfoPromises = [];
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                console.log(`Przetwarzanie pliku ${i+1}: ${file.name}, typ: ${file.type}, rozmiar: ${file.size}`);
+                
+                // Sprawdź czy to wideo lub popraw typ na iOS
+                const isVideo = file.type.startsWith('video/') || 
+                               file.name.endsWith('.mp4') || 
+                               file.name.endsWith('.mov') || 
+                               file.name.endsWith('.m4v') ||
+                               file.name.endsWith('.3gp');
+                
+                if (isVideo) {
+                    fileInfoPromises.push(detectOrientation(file));
+                } else {
+                    console.warn(`Plik ${file.name} nie jest wideo lub ma nieznany typ: ${file.type}`);
+                }
+            }
+            
+            if (fileInfoPromises.length === 0) {
+                console.error('Brak plików wideo do przetworzenia');
+                alert('Nie wybrano żadnych plików wideo. Obsługiwane formaty to MP4, MOV, M4V i 3GP.');
+                return;
+            }
+            
+            const fileInfos = await Promise.all(fileInfoPromises);
+            // Filtrujemy, żeby usunąć ewentualne null lub undefined z wyników
+            const validFileInfos = fileInfos.filter(info => info && info.file);
+            
+            if (validFileInfos.length === 0) {
+                console.error('Brak poprawnych plików po przetworzeniu');
+                alert('Nie udało się przetworzyć wybranych plików wideo. Spróbuj ponownie lub wybierz inne pliki.');
+                return;
+            }
+            
+            appState.selectedFiles = [...appState.selectedFiles, ...validFileInfos];
+            updateSelectedFiles();
+            checkNextButtonState();
+        } catch (error) {
+            console.error('Błąd podczas przetwarzania plików:', error);
+            alert('Wystąpił błąd podczas przetwarzania plików: ' + error.message);
+        }
     }
 
     // Przejście do następnego kroku
@@ -164,54 +256,114 @@ document.addEventListener('DOMContentLoaded', () => {
             // Szczególna obsługa dla iOS Safari
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
             
-            video.onloadeddata = () => {
-                resolve(video);
-            };
-            
-            video.onerror = (e) => {
+            const handleError = (e) => {
                 console.error('Błąd podczas ładowania wideo:', file.name, e);
+                // Próbujemy alternatywnej metody dla iOS, gdy wystąpi błąd
+                if (isIOS && !video._triedAlternative) {
+                    video._triedAlternative = true;
+                    console.log('Próba alternatywnej metody załadowania pliku na iOS');
+                    
+                    // Tworzymy obiekt URL bezpośrednio
+                    try {
+                        URL.revokeObjectURL(video.src); // Zwalniamy poprzedni URL
+                        const blobUrl = URL.createObjectURL(file);
+                        console.log('Utworzono blob URL bezpośrednio:', blobUrl);
+                        video.src = blobUrl;
+                        video.load();
+                        return; // Nie rozwiązujemy jeszcze Promise - czekamy na onloadeddata lub kolejny błąd
+                    } catch (altError) {
+                        console.error('Alternatywna metoda również nie działa:', altError);
+                    }
+                }
+                
+                console.log('Wszystkie metody załadowania wideo nie powiodły się');
                 resolve(null);
             };
             
-            // Dla iOS stosujemy inną metodę ładowania wideo
+            video.onloadeddata = () => {
+                console.log('Wideo załadowane pomyślnie:', file.name);
+                resolve(video);
+            };
+            
+            video.onerror = handleError;
+            
+            // Dla iOS najpierw próbujemy metody z FileReader
             if (isIOS) {
-                console.log('Wykryto iOS, używam specjalnej metody ładowania wideo');
+                console.log('Wykryto iOS, używam specjalnej metody ładowania wideo dla', file.name);
                 
                 // Tworzymy FileReader do wczytania pliku jako URL danych
                 const reader = new FileReader();
                 
                 reader.onload = function(e) {
-                    // Ustal typ MIME na podstawie pliku
-                    const mimeType = file.type || 'video/mp4';
+                    console.log('FileReader wczytał plik, rozmiar danych:', e.target.result.length);
                     
-                    // Dla iOS, zamiast Object URL używamy blob URL z FileReader
-                    fetch(e.target.result)
-                        .then(response => response.blob())
-                        .then(blob => {
-                            video.src = URL.createObjectURL(blob);
-                            video.load();
-                        })
-                        .catch(error => {
-                            console.error('Błąd podczas konwersji do Blob:', error);
-                            // Próba użycia bezpośrednio wyniku FileReader
-                            video.src = e.target.result;
-                            video.load();
-                        });
+                    // Ustal typ MIME na podstawie pliku
+                    const mimeType = file.type || determineVideoType(file.name);
+                    console.log('Ustalony typ MIME:', mimeType);
+                    
+                    // Dla iOS, próbujemy utworzyć Blob z danych
+                    try {
+                        fetch(e.target.result)
+                            .then(response => {
+                                console.log('Fetch odpowiedział:', response.status);
+                                return response.blob();
+                            })
+                            .then(blob => {
+                                console.log('Utworzono Blob z fetch, rozmiar:', blob.size);
+                                const blobUrl = URL.createObjectURL(blob);
+                                console.log('Utworzono blob URL:', blobUrl);
+                                video.src = blobUrl;
+                                video.load();
+                            })
+                            .catch(error => {
+                                console.error('Błąd podczas konwersji do Blob:', error);
+                                // Próba użycia bezpośrednio wyniku FileReader
+                                console.log('Próba użycia bezpośrednio dataURL');
+                                video.src = e.target.result;
+                                video.load();
+                            });
+                    } catch (error) {
+                        console.error('Błąd przy tworzeniu Blob:', error);
+                        video.src = e.target.result;
+                        video.load();
+                    }
                 };
                 
-                reader.onerror = function() {
-                    console.error('Błąd FileReader podczas czytania pliku wideo');
-                    resolve(null);
+                reader.onerror = function(error) {
+                    console.error('Błąd FileReader podczas czytania pliku wideo:', error);
+                    handleError(new Error('Błąd odczytu pliku za pomocą FileReader'));
                 };
                 
                 // Rozpocznij odczyt pliku jako URL danych
-                reader.readAsDataURL(file);
+                try {
+                    reader.readAsDataURL(file);
+                } catch (error) {
+                    console.error('Błąd podczas inicjacji odczytu pliku:', error);
+                    handleError(error);
+                }
             } else {
                 // Standardowa metoda dla innych przeglądarek
-                video.src = URL.createObjectURL(file);
-                video.load();
+                try {
+                    video.src = URL.createObjectURL(file);
+                    video.load();
+                } catch (error) {
+                    console.error('Błąd podczas tworzenia URL dla pliku:', error);
+                    handleError(error);
+                }
             }
         });
+    }
+
+    // Funkcja pomocnicza do określenia typu wideo na podstawie nazwy pliku
+    function determineVideoType(fileName) {
+        fileName = fileName.toLowerCase();
+        if (fileName.endsWith('.mp4')) return 'video/mp4';
+        if (fileName.endsWith('.webm')) return 'video/webm';
+        if (fileName.endsWith('.mov')) return 'video/quicktime';
+        if (fileName.endsWith('.m4v')) return 'video/mp4';
+        if (fileName.endsWith('.3gp')) return 'video/3gpp';
+        // Domyślny typ
+        return 'video/mp4';
     }
 
     // Funkcja do sprawdzania wsparcia dla MediaRecorder
@@ -732,6 +884,27 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Obsługa wyboru plików za pomocą input type="file"
     elements.fileInput.addEventListener('change', (e) => {
+        // iOS Safari wymaga specjalnej obsługi
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        
+        if (isIOS) {
+            console.log('Wykryto iOS, special handling for file input');
+            console.log('Liczba wybranych plików:', e.target.files?.length);
+            
+            // Na iOS czasami files może być null lub undefined
+            if (!e.target.files || e.target.files.length === 0) {
+                console.error('Brak plików lub problem z dostępem do e.target.files na iOS');
+                alert('Nie można odczytać wybranych plików. Spróbuj wybrać pliki ponownie lub użyj innej przeglądarki.');
+                return;
+            }
+            
+            // Debugowanie plików na iOS
+            for (let i = 0; i < e.target.files.length; i++) {
+                const file = e.target.files[i];
+                console.log(`Plik ${i+1}:`, file.name, file.type, file.size);
+            }
+        }
+        
         handleFileSelection(e.target.files);
     });
     
